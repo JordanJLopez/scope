@@ -7,6 +7,7 @@ import (
 
 	"github.com/weaveworks/common/mtime"
 	"github.com/weaveworks/common/test"
+	"github.com/weaveworks/scope/probe/kubernetes"
 	"github.com/weaveworks/scope/report"
 	s_reflect "github.com/weaveworks/scope/test/reflect"
 )
@@ -106,8 +107,14 @@ func TestReportUpgrade(t *testing.T) {
 	mtime.NowForce(time.Now())
 	defer mtime.NowReset()
 	parentsWithDeployment := report.MakeSets().Add(report.Deployment, report.MakeStringSet("id"))
-	rsNode := report.MakeNode("bar").WithParents(parentsWithDeployment)
-	podNode := report.MakeNode("foo").WithControls("alive").WithParents(report.MakeSets().Add(report.ReplicaSet, report.MakeStringSet("bar")))
+	rsNode := report.MakeNode("bar").
+		WithParents(parentsWithDeployment)
+	namespaceName := "ns"
+	namespaceID := report.MakeNamespaceNodeID(namespaceName)
+	podNode := report.MakeNode("foo").
+		WithLatests(map[string]string{kubernetes.Namespace: namespaceName}).
+		WithControls("alive").
+		WithParents(report.MakeSets().Add(report.ReplicaSet, report.MakeStringSet("bar")))
 	controls := map[string]report.NodeControlData{
 		"alive": {
 			Dead: false,
@@ -117,9 +124,12 @@ func TestReportUpgrade(t *testing.T) {
 	rpt := report.MakeReport()
 	rpt.ReplicaSet.AddNode(rsNode)
 	rpt.Pod.AddNode(podNode)
+	namespaceNode := report.MakeNode(namespaceID).
+		WithLatests(map[string]string{kubernetes.Name: namespaceName})
 	expected := report.MakeReport()
 	expected.ReplicaSet.AddNode(rsNode)
 	expected.Pod.AddNode(expectedPodNode)
+	expected.Namespace.AddNode(namespaceNode)
 	got := rpt.Upgrade()
 	if !s_reflect.DeepEqual(expected, got) {
 		t.Error(test.Diff(expected, got))
